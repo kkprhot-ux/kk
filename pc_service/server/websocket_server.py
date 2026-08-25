@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 import os
 from datetime import datetime
@@ -33,6 +33,16 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok", "db_connected": db_instance is not None}
+
+@app.get("/calls")
+def list_calls(limit: int = 50):
+    """列出最近的通话记录"""
+    rows = db_instance.execute(
+        "SELECT id, start_time, end_time, phone_number, duration_sec, scenario "
+        "FROM calls ORDER BY start_time DESC LIMIT ?",
+        (limit,)
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 @app.websocket("/ws/audio")
 async def audio_websocket(websocket: WebSocket):
