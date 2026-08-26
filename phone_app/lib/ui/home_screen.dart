@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../services/audio_capture.dart';
 import '../services/stream_service.dart';
@@ -7,7 +7,19 @@ import 'call_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final GlobalKey<NavigatorState> navigatorKey;
-  const HomeScreen({super.key, required this.navigatorKey});
+  // Optional dependencies for testing: production passes nothing and gets
+  // real AudioCaptureService / StreamService / VadService instances.
+  final AudioCaptureService? audioOverride;
+  final StreamService? streamOverride;
+  final VadService? vadOverride;
+
+  const HomeScreen({
+    super.key,
+    required this.navigatorKey,
+    this.audioOverride,
+    this.streamOverride,
+    this.vadOverride,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -24,9 +36,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _audio = AudioCaptureService();
-    _stream = StreamService();
-    _vad = VadService();
+    _audio = widget.audioOverride ?? AudioCaptureService();
+    _stream = widget.streamOverride ?? StreamService();
+    _vad = widget.vadOverride ?? VadService();
   }
 
   @override
@@ -34,7 +46,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_isRecording) {
       _stopSession();
     }
-    _audio.stop();
+    // Only stop audio if we own it (not from override).
+    if (widget.audioOverride == null) {
+      _audio.stop();
+    }
     super.dispose();
   }
 
@@ -42,10 +57,6 @@ class _HomeScreenState extends State<HomeScreen> {
     await _stream.connect();
     await _audio.start();
     setState(() => _isRecording = true);
-    _stream.suggestionStream.listen((msg) {
-      // PC backend will send `{type: "suggestion", ...}` messages
-      // during the call. The CallScreen listens to the same stream.
-    });
     if (!mounted) return;
     widget.navigatorKey.currentState?.push(
       MaterialPageRoute(
