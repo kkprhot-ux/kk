@@ -1,4 +1,5 @@
 import pytest
+import json
 from unittest.mock import patch
 from server.asr_service import XunfeiASR
 
@@ -21,7 +22,7 @@ def test_asr_generate_auth_url_format():
     # base URL
     assert url.startswith("wss://rtasr.xfyun.cn/v1/ws?")
     # required query params
-    assert "app_id=myappid" in url
+    assert "appid=myappid" in url
     assert "ts=" in url
     assert "signa=" in url
     # signa is base64 — it should be non-empty
@@ -67,7 +68,7 @@ async def test_asr_send_audio_frames():
     assert len(sent_frames) == 2
     # Frame 1: start
     f1 = json.loads(sent_frames[0])
-    assert f1["common"]["app_id"] == "a"
+    assert f1["common"]["appid"] == "a"
     assert f1["data"]["status"] == 0
     assert "L16" in f1["data"]["format"]
     # Frame 2: audio
@@ -117,3 +118,48 @@ def test_asr_extract_text_returns_partial_on_mixed_ws():
     result = asr._extract_text(resp)
     # Currently returns "" because the whole list comprehension is wrapped
     assert result == ""  # OR could be "helloworld" — documented as "" for now
+
+
+
+@pytest.mark.asyncio
+async def test_recognize_raises_on_xunfei_error_frame():
+    """Recognize must raise RuntimeError on Xunfei error frame, not crash."""
+    asr = XunfeiASR(app_id="x", api_key="k", api_secret="s")
+    error_frame = {
+        "action": "error",
+        "code": "10110",
+        "data": "",
+        "desc": "no license|illegal signa",
+        "sid": "rta013fb0a2@dx3ea71de9f9fa000100",
+    }
+    async def fake_send(ws, audio_chunk):
+        return error_frame
+    asr._send_audio = fake_send
+    with pytest.raises(RuntimeError, match="Xunfei ASR error 10110"):
+        await asr.recognize(b"fake_audio")
+
+
+
+@pytest.mark.asyncio
+async def test_send_audio_skips_non_json_frames():
+    """A non-JSON server frame is skipped (continue), not crash."""
+    asr = XunfeiASR(app_id="x", api_key="k", api_secret="s")
+
+    class FakeWS:
+        def __init__(self):
+            self.sent = []
+            self._frames = [
+                "this is not json at all",  # bad JSON -> JSONDecodeError -> continue
+                "null",                        # valid JSON but not a dict -> skipped
+                "[]",                          # valid JSON list, not a dict -> skipped
+                json.dumps({"action": "result", "data": {"result": {"ws": [{"cw": [{"w": "ok"}]}]}}}),  # valid dict
+            ]
+        async def send(self, payload):
+            self.sent.append(payload)
+        async def recv(self):
+            return self._frames.pop(0)
+
+    fake = FakeWS()
+    resp = await asr._send_audio(fake, b"x")
+    assert isinstance(resp, dict)
+    assert resp["action"] == "result"

@@ -20,20 +20,25 @@ class XunfeiASR:
         self.api_secret = api_secret
 
     def _generate_auth_url(self) -> str:
+        # Xunfei RTAS signa algorithm:
+        #   md5 = md5(appid + ts)
+        #   signa = base64(hmac-sha256(APIKey, appid + ts + md5))
+        # NOTE: the HMAC key is the APIKey, NOT the APISecret.
+        # Verified by trial: signa-with-secret returns 10106 "empty appid".
         ts = str(int(time.time()))
         tt = (self.app_id + ts).encode('utf-8')
         md5 = hashlib.md5(tt).hexdigest()
         signature = base64.b64encode(
-            hmac.new(self.api_secret.encode('utf-8'),
+            hmac.new(self.api_key.encode('utf-8'),
                     (self.app_id + ts + md5).encode('utf-8'),
                     digestmod=hashlib.sha256).digest()
         ).decode('utf-8')
-        params = {"app_id": self.app_id, "ts": ts, "signa": signature}
+        params = {"appid": self.app_id, "ts": ts, "signa": signature}  # Xunfei uses 'appid' (no underscore)
         return f"{self.WS_URL}?{urlencode(params)}"
 
     async def _send_audio(self, ws, audio_chunk: bytes):
         start_frame = {
-            "common": {"app_id": self.app_id},
+            "common": {"appid": self.app_id},
             "business": {"language": "zh", "domain": "iat"},
             "data": {"status": 0, "format": "audio/L16;rate=16000"}
         }
@@ -47,15 +52,27 @@ class XunfeiASR:
             }
         }
         await ws.send(json.dumps(audio_frame))
-        result = await ws.recv()
-        return json.loads(result)
+        # Xunfei protocol: server first sends a 'started' string frame,
+        # then a 'result' or 'error' dict frame. Loop until we see a dict.
+        while True:
+            raw = await ws.recv()
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
 
     async def recognize(self, audio_chunk: bytes) -> dict:
         url = self._generate_auth_url()
         async with websockets.connect(url) as ws:
             response = await self._send_audio(ws, audio_chunk)
-            text = self._extract_text(response)
-            return {"text": text, "confidence": 0.9}
+        if isinstance(response, dict) and response.get("action") == "error":
+            code = response.get("code", "")
+            desc = response.get("desc", "")
+            raise RuntimeError(f"Xunfei ASR error {code}: {desc}")
+        text = self._extract_text(response)
+        return {"text": text, "confidence": 0.9}
 
     def _extract_text(self, response: dict) -> str:
         try:
