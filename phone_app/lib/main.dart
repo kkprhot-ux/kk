@@ -1,6 +1,4 @@
-﻿import 'package:flutter/material.dart';
-import 'services/phone_state_service.dart';
-import 'services/stream_service.dart';
+import 'package:flutter/material.dart';
 import 'ui/home_screen.dart';
 import 'ui/history_screen.dart';
 import 'ui/settings_screen.dart';
@@ -16,32 +14,20 @@ class SalesAssistantApp extends StatefulWidget {
 }
 
 class _SalesAssistantAppState extends State<SalesAssistantApp> {
-  final phoneState = PhoneStateService();
-  final streamService = StreamService();
-
-  @override
-  void initState() {
-    super.initState();
-    phoneState.startListening();
-    phoneState.addListener(_onPhoneStateChanged);
-  }
-
-  void _onPhoneStateChanged() {
-    if (phoneState.isInCall) {
-      streamService.connect();
-    } else {
-      streamService.disconnect();
-    }
-  }
+  // v2.1: in-person sales mode. The user manually starts/stops a recording
+  // session from the Home screen; no automatic call-state monitoring
+  // is needed. Recording UI is managed by HomeScreen -> CallScreen.
+  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: '销售助手',
       theme: ThemeData.dark(),
+      navigatorKey: navigatorKey,
       initialRoute: '/',
       routes: {
-        '/': (context) => const HomeScreen(),
+        '/': (context) => HomeScreen(navigatorKey: navigatorKey),
         '/history': (context) => const HistoryScreen(),
         '/settings': (context) => const SettingsScreen(),
       },

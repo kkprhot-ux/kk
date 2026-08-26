@@ -1,3 +1,7 @@
+-- Real-time Sales Assistant (v2.1, in-person sales mode)
+-- 3 tables: calls, call_replays, realtime_suggestions
+-- contacts removed: not used in v2.1.
+
 CREATE TABLE IF NOT EXISTS calls (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     start_time DATETIME NOT NULL,
@@ -8,6 +12,7 @@ CREATE TABLE IF NOT EXISTS calls (
     scenario TEXT,
     transcript TEXT,
     audio_path TEXT,
+    mode TEXT DEFAULT 'in_person',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -39,16 +44,6 @@ CREATE TABLE IF NOT EXISTS realtime_suggestions (
     FOREIGN KEY (call_id) REFERENCES calls(id)
 );
 
-CREATE TABLE IF NOT EXISTS contacts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    phone_number TEXT UNIQUE,
-    name TEXT,
-    company TEXT,
-    notes TEXT,
-    last_call_at DATETIME,
-    call_count INTEGER DEFAULT 0
-);
-
 CREATE INDEX IF NOT EXISTS idx_calls_start_time ON calls(start_time);
+CREATE INDEX IF NOT EXISTS idx_calls_mode ON calls(mode);
 CREATE INDEX IF NOT EXISTS idx_suggestions_call_id ON realtime_suggestions(call_id);
-CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone_number);

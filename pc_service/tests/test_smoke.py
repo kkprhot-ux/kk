@@ -1,4 +1,4 @@
-﻿"""PC-side smoke test: validates the full backend chain end-to-end with mocks."""
+"""PC-side smoke test: validates the full backend chain end-to-end with mocks."""
 import os
 import json
 import shutil
@@ -107,14 +107,14 @@ def test_sales_prompts_have_required_fields():
         assert key in REPLAY_SYSTEM_PROMPT, f"Missing key '{key}' in REPLAY prompt"
 
 
-def test_schema_has_all_required_tables():
-    """Verify the schema has all 4 tables the app needs."""
+def test_schema_has_all_required_tables(client):
+    """v2.1: 3 tables (contacts removed in v2.1)."""
     tables = [r[0] for r in ws_module.db_instance.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
     ).fetchall()]
     assert "calls" in tables
     assert "call_replays" in tables
     assert "realtime_suggestions" in tables
-    assert "contacts" in tables
+    assert "contacts" not in tables, "contacts table should be removed in v2.1"
 
 
