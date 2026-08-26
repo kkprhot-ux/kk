@@ -76,6 +76,8 @@ async def test_asr_send_audio_frames():
     assert f2["data"]["status"] == 1
     assert f2["data"]["encoding"] == "raw"
     assert "audio" in f2["data"]
+    # Frame 1 must carry transType=normal (Xunfei requires it; missing -> 10110)
+    assert f1["business"]["transType"] == "normal"
 
 
 

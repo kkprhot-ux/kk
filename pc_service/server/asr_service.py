@@ -39,7 +39,11 @@ class XunfeiASR:
     async def _send_audio(self, ws, audio_chunk: bytes):
         start_frame = {
             "common": {"appid": self.app_id},
-            "business": {"language": "zh", "domain": "iat"},
+            "business": {
+                "language": "zh",
+                "domain": "iat",
+                "transType": "normal",  # required by Xunfei; missing -> 10110
+            },
             "data": {"status": 0, "format": "audio/L16;rate=16000"}
         }
         await ws.send(json.dumps(start_frame))
