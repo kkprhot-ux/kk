@@ -165,3 +165,34 @@ async def test_send_audio_skips_non_json_frames():
     resp = await asr._send_audio(fake, b"x")
     assert isinstance(resp, dict)
     assert resp["action"] == "result"
+
+
+
+def test_asr_signa_uses_hmac_sha1_not_sha256():
+    # Xunfei RTAS signa must be HMAC-SHA1. Locked in via a fixed timestamp.
+    import hashlib
+    import hmac
+    import base64
+    import unittest.mock as _um
+
+    asr = XunfeiASR(app_id="myappid", api_key="mykey", api_secret="s")
+    ts = "1700000000"
+    md5 = hashlib.md5(("myappid" + ts).encode("utf-8")).hexdigest()
+    expected = base64.b64encode(
+        hmac.new("mykey".encode("utf-8"),
+                ("myappid" + ts + md5).encode("utf-8"),
+                hashlib.sha1).digest()
+    ).decode("utf-8")
+    with _um.patch("server.asr_service.time.time", return_value=int(ts)):
+        url = asr._generate_auth_url()
+    # The signa is URL-encoded inside the query string; extract + decode it.
+    from urllib.parse import parse_qs, urlparse
+    qs = parse_qs(urlparse(url).query)
+    signa_in_url = qs["signa"][0]
+    assert signa_in_url == expected, f"got {signa_in_url!r} != {expected!r}"
+    sha256_wrong = base64.b64encode(
+        hmac.new("mykey".encode("utf-8"),
+                ("myappid" + ts + md5).encode("utf-8"),
+                hashlib.sha256).digest()
+    ).decode("utf-8")
+    assert sha256_wrong not in url, "must NOT use SHA256"

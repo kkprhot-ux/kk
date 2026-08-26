@@ -20,20 +20,23 @@ class XunfeiASR:
         self.api_secret = api_secret
 
     def _generate_auth_url(self) -> str:
-        # Xunfei RTAS signa algorithm:
-        #   md5 = md5(appid + ts)
-        #   signa = base64(hmac-sha256(APIKey, appid + ts + md5))
-        # NOTE: the HMAC key is the APIKey, NOT the APISecret.
-        # Verified by trial: signa-with-secret returns 10106 "empty appid".
+        # Xunfei RTAS signa algorithm (per official doc):
+        #   1. baseString = appid + ts
+        #   2. md5str = md5(baseString)
+        #   3. signa = base64(hmac-sha1(APIKey, baseString + md5str))
+        # Notes (from systematic-debugging):
+        # - HMAC key is APIKey, NOT APISecret (was wrong earlier).
+        # - Algorithm is HMAC-SHA1, NOT HMAC-SHA256 (this bug).
+        # - URL param is 'appid' (no underscore).
         ts = str(int(time.time()))
         tt = (self.app_id + ts).encode('utf-8')
         md5 = hashlib.md5(tt).hexdigest()
         signature = base64.b64encode(
             hmac.new(self.api_key.encode('utf-8'),
                     (self.app_id + ts + md5).encode('utf-8'),
-                    digestmod=hashlib.sha256).digest()
+                    digestmod=hashlib.sha1).digest()
         ).decode('utf-8')
-        params = {"appid": self.app_id, "ts": ts, "signa": signature}  # Xunfei uses 'appid' (no underscore)
+        params = {"appid": self.app_id, "ts": ts, "signa": signature}
         return f"{self.WS_URL}?{urlencode(params)}"
 
     async def _send_audio(self, ws, audio_chunk: bytes):
