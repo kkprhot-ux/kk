@@ -87,10 +87,16 @@ def create_call_record(phone_number: str = None, mode: str = "in_person") -> int
 
 
 def finalize_call(call_id: int):
+    # SQLite evaluates SET clauses left-to-right but column references
+    # see pre-update values. Setting end_time and reading it in the same
+    # UPDATE leaves duration_sec NULL, so we split into two UPDATEs.
+    db_instance.execute(
+        "UPDATE calls SET end_time = datetime('now', 'localtime') WHERE id = ?",
+        (call_id,),
+    )
     db_instance.execute(
         "UPDATE calls "
-        "SET end_time = datetime('now', 'localtime'), "
-        "    duration_sec = CAST((julianday(end_time) - julianday(start_time)) * 86400 AS INTEGER) "
+        "SET duration_sec = CAST((julianday(end_time) - julianday(start_time)) * 86400 AS INTEGER) "
         "WHERE id = ?",
         (call_id,),
     )
