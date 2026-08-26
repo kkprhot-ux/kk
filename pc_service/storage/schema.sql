@@ -49,6 +49,6 @@ CREATE TABLE IF NOT EXISTS contacts (
     call_count INTEGER DEFAULT 0
 );
 
-CREATE INDEX idx_calls_start_time ON calls(start_time);
-CREATE INDEX idx_suggestions_call_id ON realtime_suggestions(call_id);
-CREATE INDEX idx_contacts_phone ON contacts(phone_number);
+CREATE INDEX IF NOT EXISTS idx_calls_start_time ON calls(start_time);
+CREATE INDEX IF NOT EXISTS idx_suggestions_call_id ON realtime_suggestions(call_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone_number);
