@@ -1,6 +1,6 @@
 import pytest
 import json
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock, AsyncMock
 from server.asr_service import XunfeiASR
 
 
@@ -8,9 +8,20 @@ from server.asr_service import XunfeiASR
 async def test_asr_recognize_happy_path():
     """recognize() returns text + confidence on success."""
     asr = XunfeiASR(app_id="test", api_key="test", api_secret="test")
-    with patch.object(asr, "_send_audio", return_value={
+    fake_response = {
         "data": {"result": {"ws": [{"cw": [{"w": "ni"}]}, {"cw": [{"w": "hao"}]}]}}
-    }):
+    }
+    class FakeWS:
+        def __init__(self, url=None, *a, **kw):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def send(self, *a, **kw): pass
+        async def recv(self): return "{}"
+    with patch("server.asr_service.websockets.connect", new=FakeWS), \
+         patch.object(asr, "_send_audio", return_value=fake_response):
         result = await asr.recognize(b"fake_audio")
     assert result == {"text": "nihao", "confidence": 0.9}
 
@@ -25,7 +36,7 @@ def test_asr_generate_auth_url_format():
     assert "appid=myappid" in url
     assert "ts=" in url
     assert "signa=" in url
-    # signa is base64 — it should be non-empty
+    # signa is base64 鈥?it should be non-empty
     import re
     m = re.search(r"signa=([A-Za-z0-9+/=]+)", url)
     assert m is not None
@@ -57,6 +68,12 @@ async def test_asr_send_audio_frames():
     sent_frames = []
 
     class FakeWS:
+        def __init__(self, url=None, *a, **kw):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
         async def send(self, payload):
             sent_frames.append(payload)
             # First send: start frame (status 0); second: audio frame (status 1)
@@ -119,7 +136,7 @@ def test_asr_extract_text_returns_partial_on_mixed_ws():
     # whole thing and returns "". Document the actual behavior:
     result = asr._extract_text(resp)
     # Currently returns "" because the whole list comprehension is wrapped
-    assert result == ""  # OR could be "helloworld" — documented as "" for now
+    assert result == ""  # OR could be "helloworld" 鈥?documented as "" for now
 
 
 
@@ -134,10 +151,20 @@ async def test_recognize_raises_on_xunfei_error_frame():
         "desc": "no license|illegal signa",
         "sid": "rta013fb0a2@dx3ea71de9f9fa000100",
     }
+    class FakeWS:
+        def __init__(self, url=None, *a, **kw):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def send(self, *a, **kw): pass
+        async def recv(self): return "{}"
     async def fake_send(ws, audio_chunk):
         return error_frame
     asr._send_audio = fake_send
-    with pytest.raises(RuntimeError, match="Xunfei ASR error 10110"):
+    with patch("server.asr_service.websockets.connect", new=FakeWS), \
+         pytest.raises(RuntimeError, match="Xunfei ASR error 10110"):
         await asr.recognize(b"fake_audio")
 
 
@@ -196,3 +223,14 @@ def test_asr_signa_uses_hmac_sha1_not_sha256():
                 hashlib.sha256).digest()
     ).decode("utf-8")
     assert sha256_wrong not in url, "must NOT use SHA256"
+
+
+
+@pytest.mark.asyncio
+async def test_asr_recognize_empty_audio_returns_skip():
+    """recognize() with empty bytes returns {text:'', skip:True} without any network call."""
+    asr = XunfeiASR(app_id="x", api_key="k", api_secret="s")
+    with patch("server.asr_service.websockets.connect") as mock_connect:
+        result = await asr.recognize(b"")
+        assert result == {"text": "", "skip": True}
+        mock_connect.assert_not_called()
